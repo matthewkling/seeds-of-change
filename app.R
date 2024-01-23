@@ -11,7 +11,6 @@ library(leaflet)
 library(raster)
 library(terra)
 library(grid)
-library(ecoclim)
 library(purrr)
 library(stringr)
 select <- dplyr::select
@@ -107,6 +106,20 @@ $(document).on("keyup", function(e) {
   }
 });
 '
+
+
+stackBands <- function (paths, band){
+      for (i in paths) {
+            r <- brick(i)
+            r <- raster::subset(r, band)
+            if (i == paths[1]) 
+                  s <- r
+            else {
+                  s <- stack(s, r)
+            }
+      }
+      s
+}
 
 
 ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; font-weight: bold"),
