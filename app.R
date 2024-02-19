@@ -121,17 +121,19 @@ stackBands <- function (paths, band){
       s
 }
 
-
+# UI ###################
 ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; font-weight: bold"),
                  fluid = TRUE,
                  selected = "Home",
+                 
+                 tags$head(includeHTML("google-analytics.html")),
                  tags$script(js),
                  
                  tabPanel("Home",
                           column(4,
                                  fluidRow(
                                        column(12,
-                                              span("A spatial analysis tool to identify areas in California potentially suitable for plant seed collection or planting, incorporating climate change, soil characteristics, species distributions, and adaptive neighborhoods."))),
+                                              span("A spatial analysis tool to identify areas in California potentially suitable for seed collection or planting, incorporating climate change, soil characteristics, species distributions, and adaptive neighborhoods."))),
                                  hr(),
                                  fluidRow(
                                        column(4,
@@ -177,10 +179,10 @@ ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; fon
                                  ),
                                  fluidRow(
                                        column(4,
-                                              selectizeInput("xvar", "X variable", setdiff(all_vars$desc, "Seed zones"), all_vars$desc[2])
+                                              selectizeInput("xvar", "X variable", all_vars$desc[!str_detect(all_vars$desc, "Seed zones|Change in")], all_vars$desc[1])
                                        ),
                                        column(4,
-                                              selectizeInput("yvar", "Y variable", setdiff(all_vars$desc, "Seed zones"), all_vars$desc[1])
+                                              selectizeInput("yvar", "Y variable", all_vars$desc[!str_detect(all_vars$desc, "Seed zones|Change in")], all_vars$desc[2])
                                        ),
                                        column(4,
                                               selectizeInput("color", "Color variable", 
@@ -195,7 +197,7 @@ ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; fon
                                  
                           ),
                           column(8,
-                                 leafletOutput("map", height=1000)
+                                 leafletOutput("map", height="90vh") #1000)
                           )
                  ),
                  
@@ -225,16 +227,12 @@ ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; fon
 )
 
 
+# server #################
 
 server <- function(input, output, session) {
       
-      # showModal(modalDialog(
-      #       title="Seeds of Change",
-      #       HTML("Welcome. This tool is aimed at comparing environmental patterns across California plant species ranges to support decisions around ecological restoration projects,",
-      #            "incorporating data on species ranges, soil variation, and future climate change. Details can be found on the 'Instructions' tab, and by clicking the '[?]' icons.",
-      #            "<br><br>This is a beta version still under active development. Documentation is incomplete, the tool has not been thoroughly tested, and bugs are possible. Please contact mattkling@berkeley.edu with questions or bug reports."),
-      #       easyClose = TRUE, footer = modalButton("Dismiss")
-      # ))
+      
+      # informational popups #############################
       
       observeEvent(input$i_species,
                    {showModal(modalDialog(
@@ -304,7 +302,6 @@ server <- function(input, output, session) {
                          title = "Seed zones",
                          "Use this slider to select the number of seed zones to produce. This performs a k-means cluster analysis, grouping sites across the species range into clusters with similar environments.",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
-      
       observeEvent(input$i_arrows, 
                    {showModal(modalDialog(
                          title = "Focal site",
@@ -314,7 +311,7 @@ server <- function(input, output, session) {
       
       
       
-      
+      # dynamic inputs ######################
       
       site <- reactiveValues(point = s)
       
@@ -337,35 +334,38 @@ server <- function(input, output, session) {
             # site$ll <- coordinates(s)
       })
       
+      # show range constraint input only in collection mode
       output$constraintControls <- renderUI({
             if(input$mode == "seed collection") checkboxInput("constrain", span("Limit results to species range", actionLink("i_constrain", "[?]")), TRUE)
       })
       
+      # show k input only when seed zone output is selected
       output$nclust <- renderUI({
             if(input$color == "Seed zones") sliderInput("k", span("Number of seed zones", actionLink("i_nclust", "[?]")), 2, 8, 5, 1)
       })
       
-      ssp_sel <- reactiveValues(sel = "SSP585")
-      observeEvent(input$ssp, { ssp_sel$sel <- c(ssp_sel$sel, ssps$ssp[ssps$text == input$ssp]) })
-      
-      observe(priority = 10, {
-            baseline <- as.character(input$time == "1981-2010")
-            updateSelectInput(session, "ssp",
-                              choices = switch(baseline, 
-                                               "TRUE" = "historic",
-                                               "FALSE" = setdiff(ssps$text, "historic")),
-                              selected = ifelse(baseline == "TRUE", 
-                                                "historic", ssps$text[ssps$ssp == tail(ssp_sel$sel[ssp_sel$sel != "historic"], 1)] ))
+      ### show only the input choices relevant to selected timeframe ###
+      sel <- reactiveValues(ssp = "SSP585", color = all_vars$desc[11]) # container to record selection history
+      observeEvent(input$ssp, sel$ssp <- c(sel$ssp, ssps$ssp[ssps$text == input$ssp]))
+      observeEvent(input$color, sel$color <- c(sel$color, input$color))
+      observeEvent(input$time, {
+            freezeReactiveValue(input, "ssp")
+            if(input$time == "1981-2010"){
+                  updateSelectInput(session, "ssp", choices = "historic", selected = "historic")
+                  updateSelectizeInput(session, "color", 
+                                       choices = all_vars$desc[c(11, 12, 1:10)], 
+                                       selected = tail(sel$color[!str_detect(sel$color, "Change in")], 1))
+            }else{
+                  updateSelectInput(session, "ssp", choices = setdiff(ssps$text, "historic"), selected = ssps$text[ssps$ssp == tail(sel$ssp[sel$ssp != "historic"], 1)])
+                  updateSelectizeInput(session, "color", 
+                                       choices = all_vars$desc[c(11, 12, 1:10, 13:17)], 
+                                       selected = tail(sel$color, 1))
+            }
       })
       
-      # for color variables, only show deltas if future timeframe is selected
-      # observe({
-      #       updateSelectInput(session, "color",
-      #                         choices = switch(as.character(input$time == "1981-2010"),
-      #                                          "TRUE" = all_vars$desc[c(13:11, 14, 1:10)],
-      #                                          "FALSE" = all_vars$desc[c(13:11, 14, 1:10, 15:19)]))
-      # })
       
+      
+      # data processing ############################
       
       # historic
       smoothed_envt <- reactive({
@@ -389,6 +389,7 @@ server <- function(input, output, session) {
             time <- input$time
             ssp <- ssps$ssp[ssps$text == input$ssp]
             if(time == times[1]) ssp <- ssps$ssp[1]
+            if(time != times[1] & ssp == "historic") ssp <- tail(sel$ssp[sel$ssp != "historic"], 1)
             
             cf <- clim_files$path[clim_files$year==time & clim_files$ssp==ssp]
             
@@ -406,7 +407,6 @@ server <- function(input, output, session) {
             
             list(clim = clim,
                  m1 = m1, m2 = m2, m3 = m3, m4 = m4, m5 = m5,
-                 # clim_sd = clim_sd,
                  soil = soil_all)
       })
       
@@ -442,6 +442,9 @@ server <- function(input, output, session) {
       
       # target environment at selected site (future if planting mode)
       target_envt <- reactive({
+            # req(scenario())
+            # message(paste(ssp_sel$sel, collapse = ", "))
+            # if(input$time == "2011-2040") browser()
             future <- future_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
             historic <- smoothed_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
             reference <- ref_envt %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
@@ -508,37 +511,17 @@ server <- function(input, output, session) {
       
       
       
+      
+      
+      # map ####################################
+      
+      # palettes 
       sigma_pal <- c("red", "#FDE725FF", "#5DC863FF", "#21908CFF", "#3B528BFF", "#440154FF", "black")
       viridis_pal <- rev(c("#FDE725FF", "#5DC863FF", "#21908CFF", "#3B528BFF", "#440154FF", "black"))
       delta_pal <- rev(c("darkred", "orange", "gray", "dodgerblue", "darkblue"))
-      cluster_pal <- reactive({RColorBrewer::brewer.pal(k(), "Dark2")})
-      
+      cluster_pal <- reactive({RColorBrewer::brewer.pal(k(), "Dark2")[1:k()]})
       
       icon <- makeAwesomeIcon("leaf", markerColor="red")
-      
-      # rgb_raster <- reactive({
-      #       req(final)
-      #       f <- values(final()[[1:10]])
-      #       a <- which(is.finite(rowSums(f)))
-      #       v <- scale(na.omit(f))
-      #       v[,1:5] <- v[,1:5] * input$pclim/100 * 2
-      #       v[,6:10] <- v[,6:10] * (1-input$pclim/100) * 2
-      #       v <- apply(prcomp(v)$x[,1:3], 2,
-      #                  function(x) (rank(x)-1)/(length(x)-1))
-      #       v <- v[, sample(1:3, 3)] # permute columns
-      #       clr <- final()[[1:3]] %>% setValues(NA)
-      #       for(i in 1:3){
-      #             if(sample(c(T, F), 1)){
-      #                   clr[[i]][a] <- v[,i]
-      #             }else{clr[[i]][a] <- 1-v[,i]}
-      #       }
-      #       clr <- clr * 255 * .8 # scale to avoid white
-      #       RGB(clr) <- 1:3
-      #       names(clr) <- c("r", "g", "b")
-      #       clr
-      # })
-      
-      
       
       output$map <- renderLeaflet({
             leaflet() %>%
@@ -613,6 +596,7 @@ server <- function(input, output, session) {
                   })
       })
       
+      # scatter plot ####################################
       output$scatter <- renderPlot({
             
             req(final())
@@ -633,6 +617,7 @@ server <- function(input, output, session) {
             #       d$rgb <- rgb(d$r, d$g, d$b, maxColorValue = 255)
             #       d <- select(d, -r, -g, -b)
             # }else{
+            # if(input$xvar == "Change in Climatic water deficit") browser()
             d <- f[[c(vx, vy, vc)]] %>% as.data.frame() %>% na.omit()
             # }
             
@@ -652,12 +637,12 @@ server <- function(input, output, session) {
             # plot
             req(d, vc)
             
-            if(vc == "clust") d$cvar <- factor(d$cvar)
+            if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", sort(unique(d$cvar))))
             
             vci <- all_vars[all_vars$desc == input$color, ]
             scatter <- ggplot() +
                   geom_point(data = d, aes(xvar, yvar, color = cvar), size = .5) +
-                  theme_minimal() +
+                  theme_minimal(base_size = 15) +
                   theme(legend.position = "right") +
                   labs(x = x_label, y = y_label, color = NULL)
             
@@ -724,6 +709,7 @@ server <- function(input, output, session) {
                                                all_vars$units[all_vars$desc == input$color]) })
       
       
+      # downloads ########################
       
       # data download
       output$download <- downloadHandler(
