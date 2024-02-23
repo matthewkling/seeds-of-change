@@ -145,7 +145,11 @@ ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; fon
                                                         paste(s$lon, s$lat, sep = ", ")),
                                               selectizeInput("sp", 
                                                              span("Species ", actionLink("i_species", "[?]")), 
-                                                             choices = spps, selected = "Quercus agrifolia")
+                                                             choices = spps, selected = "Quercus agrifolia"),
+                                              shinyWidgets::sliderTextInput("threshold", 
+                                                                            span("SDM threshold", actionLink("i_threshold", "[?]")),
+                                                                            choices=c(1, 2, 5, seq(10, 90, 10), 95), 
+                                                                            selected = 50, post = "%", grid = T),
                                        ),
                                        column(4,
                                               selectInput("time", 
@@ -308,6 +312,14 @@ server <- function(input, output, session) {
                          "The red arrows indicate projected climate change at the focal site for the selected era and emissions scenario, according to five different global climate models (GCMs).",
                          "The large red point indicates the focal site's environment for the era listed in red above the plot, which is what is compared to other sites across the species range to calculate 'environmental difference'; for future time periods this is the average of the GCMs.",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
+      observeEvent(input$i_threshold, 
+                   {showModal(modalDialog(
+                         title = "Species distribution model (SDM) threshold",
+                         "The species range maps in this tool are based on models that estimate continuous gradients of occurrence likelihood, in which every species has suitability values ranging from 0 to 100 across the state.",
+                         "These are not probabilities; they represent occurrence scores as a percentage of the highest occurrence score for the species anywhere in the state.",
+                         "This tool 'thresholds' these suitability maps, displaying only those areas with a modeled occurrence score higher than the value set by the `SDM threshold` slider." ,
+                         "Reduce this setting to display a narrower area where the species is more likely to be present, or increase it to display a broader area where occurrence is less certain.",
+                         easyClose = TRUE, footer = modalButton("Dismiss") )) })
       
       
       
@@ -367,6 +379,21 @@ server <- function(input, output, session) {
       
       # data processing ############################
       
+      range_mask <- reactive({
+            threshold <- input$threshold / 100
+            p <- rast(list.files(paste0(assets, "/ranges"), pattern = input$sp, full.names = T))
+            p[p < threshold] <- NA
+            
+            y <- smoothed %>% 
+                  filter(gs==input$sp,
+                         radius==input$radius) %>%
+                  pull(path) %>%
+                  terra::rast()
+            p <- crop(p, crop(y[[1]], p))
+      })
+      
+      clip <- function(x, y) x %>% crop(y) %>% mask(y) %>% trim()
+      
       # historic
       smoothed_envt <- reactive({
             req(input$sp)
@@ -374,7 +401,8 @@ server <- function(input, output, session) {
                   filter(gs==input$sp,
                          radius==input$radius) %>%
                   pull(path) %>%
-                  terra::rast()
+                  terra::rast() %>% 
+                  clip(range_mask())
             names(y) <- sub("800m_", "PC", names(y))
             return(list(clim = y[[6:10]],
                         soil = y[[1:5]]))
@@ -420,7 +448,7 @@ server <- function(input, output, session) {
                                  grepl(tolower(ssp), files) &
                                  grepl(str_remove(var, "d"), files)]
             msk <- smoothed_envt()[[1]][[1]]
-            rast(files) %>% crop(msk) %>% mask(msk) %>% setNames(var)
+            rast(files) %>% crop(msk) %>% mask(msk) %>% setNames(var) %>% clip(range_mask())
       })
       
       # reference climate across range (historic if planting mode)

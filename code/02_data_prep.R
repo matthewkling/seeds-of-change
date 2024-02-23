@@ -14,7 +14,7 @@ select <- dplyr::select
 ###### restoration parameters #####
 
 # list of focal species
-spp <- read.csv("assets/focal_species.csv", stringsAsFactors = F)
+spp <- read.csv("../seedsource/assets/focal_species.csv", stringsAsFactors = F)
 key_spp <- spp$Species
 
 
@@ -130,6 +130,8 @@ writeRaster(soil, "assets/climate/soil_800m.tif",
 ## transfer sdm to climate grid ##
 f <- list.files("~/data/ca_plant_ranges_philtransb/", full.names=T)
 template <- raster(clim$path[1])
+
+# original method: reclassify to binary at p
 project_range <- function(x = "NONE", p = .1, outdir = "assets/all_species/ranges/"){
       outfile <- paste0(outdir, x, ".tif")
       if(file.exists(outfile)) return("skipped")
@@ -148,6 +150,21 @@ project_range <- function(x = "NONE", p = .1, outdir = "assets/all_species/range
       return("projected")
 }
 
+# v2: reclassify to NA below p but retain continuous above p
+project_range_v2 <- function(x = "NONE", p = .05, outdir = "assets/all_species/ranges/"){
+      outfile <- paste0(outdir, x, ".tif")
+      if(file.exists(outfile)) return("skipped")
+      message(x)
+      fx <- f[grepl(x, f)]
+      if(x == "NONE") fx <- f[[1]]
+      r <- raster(fx)
+      r <- projectRaster(r, template)
+      r <- r / cellStats(r, max)
+      if(x == "NONE") r <- r %>% reclassify(c(-1, 1, 1)) %>% trim()
+      if(x != "NONE") r <- r %>% reclassify(c(-1, p, NA)) %>% trim()
+      writeRaster(r, outfile, overwrite = T)
+      return("projected")
+}
 
 
 
@@ -162,7 +179,7 @@ clim_files <- data.frame(path=list.files("assets/climate",
       select(-junk) %>%
       filter(var %in% vars) %>% arrange(var)
 
-soil_all <- stack("assets/climate/soil_800m.tif")
+soil_all <- stack("assets/soil_800m.tif")
 
 
 # historic environments across species range
@@ -175,9 +192,11 @@ species_envt <- function(x, dir = "assets/all_species/ranges/"){
       range <- crop(range, clim)
       clim <- clim %>% crop(range) %>% mask(range) %>% trim()
       soil <- soil_all %>% crop(range) %>% mask(range) %>% trim()
+      range <- range %>% crop(clim) %>% mask(clim[[1]]) %>% trim()
       
       list(soil = crop(soil, clim),
-           clim = crop(clim, soil))
+           clim = crop(clim, soil),
+           range = range)
 }
 
 # smoothed historic environment representing gene flow
@@ -202,22 +221,49 @@ smoothed_envt <- function(e, radius){
       return(e)
 }
 
+smoothed_envt_v2 <- function(e, radius){ # v2: weighted by range
+      
+      require(terra)
+      p <- rast(e[[3]])
+      e <- c(rast(e[[1]]), rast(e[[2]]))
+      dime <- dim(e)
+      
+      rz <- res(e[[1]])[1]
+      w <- focalWeight(e[[1]], rz/2 + rz*radius, "circle")
+      w[w>0] <- 1
+      
+      if(ncol(w) > 2 * ncol(e) |
+         nrow(w) > 2 * nrow(e)){
+            e <- extend(e, max(dim(w)))
+            p <- extend(p, max(dim(w)))
+      }
+      
+      if(radius > 0){
+            eps <- terra::focal(e*p, w=w, fun=sum, na.rm=T, na.policy="omit")
+            ps <- terra::focal(p, w=w, fun=sum, na.rm=T, na.policy="omit")
+            e <- eps / ps
+      } 
+      # names(e)[6:10] <- paste0("soil", 1:5)
+      return(e)
+}
+
+
 
 all_spp <- list.files("~/data/ca_plant_ranges_philtransb/") %>%
       str_remove("\\.tif") %>%
       sample(length(.)) %>%
       c("NONE")
 
-sp_smooth <- function(x, indir = "assets/all_species/range/", outdir = "assets/all_species/smooth/"){
+sp_smooth_v2 <- function(x, indir = "assets/all_species/ranges/", outdir = "assets/all_species/smooth/"){
       require(raster)
-      if(file.exists(paste0(dir, x, " ", 100, ".tif"))) return("skipped")
-      message(x)
+      if(file.exists(paste0(outdir, x, " ", 100, ".tif"))) return("skipped")
+      # message(x)
       z <- species_envt(x, dir = indir)
       for(r in c(0, 1, 2, 5, 10, 20, 50, 100)){
-            message(r)
+            # message(r)
             out <- paste0(outdir, x, " ", r, ".tif")
             if(file.exists(out)) next()
-            terra::writeRaster(smoothed_envt(z, r), out, overwrite = T)
+            terra::writeRaster(smoothed_envt_v2(z, r), out, overwrite = T)
       }
       return("done")
 }
@@ -226,7 +272,7 @@ sp_smooth <- function(x, indir = "assets/all_species/range/", outdir = "assets/a
 # species niche breadths
 niche_breadth <- function(x, dir = "assets/seedsource_data/smooth/"){
       require(terra)
-      r <- rast(paste0(dir, x, " ", 0, ".tif"))
+      r <- rast(paste0(sdir, x, " ", 0, ".tif"))
       m <- global(r, "mean", na.rm = T) %>% 
             as.data.frame() %>%
             rownames_to_column("var") %>%
@@ -238,18 +284,42 @@ niche_breadth <- function(x, dir = "assets/seedsource_data/smooth/"){
       m
 }
 
+niche_breadth_v2 <- function(x, sdir = "assets/all_species/smooth/", rdir = "assets/all_species/ranges/"){ # weighted
+      require(terra)
+      r <- rast(paste0(sdir, x, " ", 0, ".tif"))
+      p <- rast(paste0(rdir, x, ".tif")) %>% crop(r)
+      
+      # weighted mean
+      sump <- as.numeric(global(p, "sum", na.rm = T))
+      wm <- (global(r*p, "sum", na.rm = T) / sump) %>% 
+            as.data.frame() %>%
+            rownames_to_column("var") %>%
+            mutate(var = str_replace(var, "800m_", "PC")) %>%
+            rename(mean = sum)
+      
+      # weighted sd: https://stats.stackexchange.com/a/171619
+      sump2 <- as.numeric(global(p^2, "sum", na.rm = T))
+      wsd <- sqrt(global(p * (r - wm$mean)^2, "sum", na.rm = T) / (sump - sump2/sump)) %>%
+            as.data.frame() %>%
+            rename(sd = sum)
+      
+      wm$sd <- wsd$sd
+      wm$species <- x
+      wm
+}
+
 
 library(furrr)
 plan(multisession, workers = 6)
 
-future_map(all_spp, project_range)
-sm <- future_map(all_spp, sp_smooth)
-niches <- future_map_dfr(all_spp, niche_breadth)
+future_map(all_spp, project_range_v2)
+sm <- future_map(all_spp, sp_smooth_v2)
+niches <- future_map_dfr(all_spp, niche_breadth_v2)
 saveRDS(niches %>% as_tibble(), "assets/range_stats.rds")
 
 # would be better to just copy select species data to the appropriate folder instead of regenerating. but:
-future_map(key_spp, project_range, outdir = "assets/select_species/ranges/")
-sm <- future_map(key_spp, sp_smooth, indir = "assets/select_species/ranges/", outdir = "assets/select_species/smooth/")
+future_map(key_spp, project_range_v2, outdir = "assets/select_species/ranges/")
+sm <- future_map(key_spp, sp_smooth_v2, indir = "assets/select_species/ranges/", outdir = "assets/select_species/smooth/")
 
 
 
