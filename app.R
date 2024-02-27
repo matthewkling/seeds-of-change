@@ -317,8 +317,9 @@ server <- function(input, output, session) {
                          title = "Species distribution model (SDM) threshold",
                          "The species range maps in this tool are based on models that estimate continuous gradients of occurrence likelihood, in which every species has suitability values ranging from 0 to 100 across the state.",
                          "These are not probabilities; they represent occurrence scores as a percentage of the highest occurrence score for the species anywhere in the state.",
-                         "This tool 'thresholds' these suitability maps, displaying only those areas with a modeled occurrence score higher than the value set by the `SDM threshold` slider." ,
-                         "Reduce this setting to display a narrower area where the species is more likely to be present, or increase it to display a broader area where occurrence is less certain.",
+                         "This tool 'thresholds' these suitability maps, displaying only those areas with a modeled occurrence score higher than the value set by the `SDM threshold` slider.",
+                         "Choose a lower value to select a broader range (which will likely include more actual populations, but probably also more places the species doesn't actually exist).",
+                         "Choose a higher value to select a narrower range (which will reduce the inclusion of places the species doesn't actually exist, but may also omit more true populations).",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       
       
@@ -470,9 +471,6 @@ server <- function(input, output, session) {
       
       # target environment at selected site (future if planting mode)
       target_envt <- reactive({
-            # req(scenario())
-            # message(paste(ssp_sel$sel, collapse = ", "))
-            # if(input$time == "2011-2040") browser()
             future <- future_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
             historic <- smoothed_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
             reference <- ref_envt %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
@@ -490,18 +488,12 @@ server <- function(input, output, session) {
       range_stats <- reactive({
             y <- filter(range_summaries,
                         species == input$sp)
-            # list(clim_mean = y$mean[6:10],
-            #      clim_sd = y$sd[6:10],
-            #      soil_mean = y$mean[1:5],
-            #      soil_sd = y$sd[1:5])
             list(mean = y$mean[c(6:10, 1:5)],
                  sd = y$sd[c(6:10, 1:5)])
       })
       
       sigmas <- reactive({
             x <- c(range_envt()$clim, range_envt()$soil)
-            # range_mean <- c(range_stats()$clim_mean, range_stats()$soil_mean)
-            # range_sd <- c(range_stats()$clim_sd, range_stats()$soil_sd)# / rep(scl(), each = 5)
             x <- (x - range_stats()$mean) / range_stats()$sd
             site_mean <- (unlist(c(target_envt()$focal$clim, target_envt()$focal$soil)) - range_stats()$mean) / range_stats()$sd
             w <- rep(c(input$pclim / 100, 1-(input$pclim / 100)), each = nlyr(x)/2)
