@@ -318,6 +318,7 @@ niches <- future_map_dfr(all_spp, niche_breadth_v2)
 saveRDS(niches %>% as_tibble(), "assets/range_stats.rds")
 
 # would be better to just copy select species data to the appropriate folder instead of regenerating. but:
+key_spp <- c(unique(key_spp), "NONE")
 future_map(key_spp, project_range_v2, outdir = "assets/select_species/ranges/")
 sm <- future_map(key_spp, sp_smooth_v2, indir = "assets/select_species/ranges/", outdir = "assets/select_species/smooth/")
 
