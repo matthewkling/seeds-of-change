@@ -1,8 +1,7 @@
 
 library(shiny)
 library(shinydashboard)
-library(shinyalert)
-library(shinyBS)
+library(cowplot)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
