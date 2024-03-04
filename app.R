@@ -1,10 +1,10 @@
 
 library(shiny)
 library(shinydashboard)
-library(cowplot)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(cowplot)
 library(leaflet)
 library(raster)
 library(terra)
@@ -733,9 +733,7 @@ server <- function(input, output, session) {
                                                          barheight = .75,
                                                          title.position = "top"))
             }
-            require(ggpubr)
-            leg <- get_legend(p)
-            as_ggplot(leg)
+            grid.draw(cowplot::get_legend(p))
       })
       output$legend1 <- renderPlot({ lgnd() })
       output$legend2 <- renderPlot({ lgnd() })
