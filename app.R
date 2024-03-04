@@ -1,9 +1,8 @@
 
-
-
 library(shiny)
-library(rintrojs)
+library(shinydashboard)
 library(shinyalert)
+library(shinyBS)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -60,13 +59,12 @@ range_summaries <- readRDS("assets/range_stats.rds")
 
 ll <- crs("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 
-all_vars <- data.frame(abbv = c(vars, paste0("soil_PC", 1:5), # "clim_prob", "soil_prob", 
+all_vars <- data.frame(abbv = c(vars, paste0("soil_PC", 1:5),
                                 "prob", "clust", paste0("d", vars)))
 all_vars$desc <- c("Actual evapotranspiration", "Climatic water deficit",
                    "Winter minimum temperature", "Summer maximum temperature",
                    "Annual precipitation",
                    "Soil PC1", "Soil PC2", "Soil PC3", "Soil PC4", "Soil PC5",
-                   # "Climate sigma", "Soil sigma", 
                    "Environmental difference",
                    "Seed zones",
                    paste0("Change in ", c("Actual evapotranspiration", "Climatic water deficit",
@@ -93,7 +91,7 @@ sigma <- function(x, site_mean, w){
 
 # default focal site location: presidio
 lonlat <- "-122.52, 37.83"
-s <- data.frame(species=NA, lat=37.83, lon=-122.52)
+s <- data.frame(species=NA, lat=38.02, lon=-122.83)
 coordinates(s) <- c("lon", "lat")
 crs(s) <- ll
 
@@ -121,118 +119,133 @@ stackBands <- function (paths, band){
       s
 }
 
-# UI ###################
-ui <- navbarPage(title = span("Seeds of Change [BETA]", style="color: black; font-weight: bold"),
-                 fluid = TRUE,
-                 selected = "Home",
-                 
-                 tags$head(includeHTML("google-analytics.html")),
-                 tags$script(js),
-                 
-                 tabPanel("Home",
-                          column(4,
-                                 fluidRow(
-                                       column(12,
-                                              span("A spatial analysis tool to identify areas in California potentially suitable for seed collection or planting, incorporating climate change, soil characteristics, species distributions, and adaptive neighborhoods."))),
-                                 hr(),
-                                 fluidRow(
-                                       column(4,
-                                              selectInput("mode", 
-                                                          span("Focal site activity ", actionLink("i_mode", "[?]")), 
-                                                          c("planting", "seed collection"), "planting"),
-                                              textInput("lonlat",
-                                                        span("Focal site location ", actionLink("i_location", "[?]")), 
-                                                        paste(s$lon, s$lat, sep = ", ")),
-                                              selectizeInput("sp", 
-                                                             span("Species ", actionLink("i_species", "[?]")), 
-                                                             choices = spps, selected = "Quercus agrifolia"),
-                                              shinyWidgets::sliderTextInput("threshold", 
-                                                                            span("SDM threshold", actionLink("i_threshold", "[?]")),
-                                                                            choices=c(1, 2, 5, seq(10, 90, 10), 95), 
-                                                                            selected = 50, post = "%", grid = T),
-                                       ),
-                                       column(4,
-                                              selectInput("time", 
-                                                          span("Time period ", actionLink("i_time", "[?]")), 
-                                                          times, "2071-2100"),
-                                              selectInput("ssp", 
-                                                          span("Scenario ", actionLink("i_ssp", "[?]")), 
-                                                          ssps$text, "SSP5-8.5"),
-                                              uiOutput("constraintControls")
-                                       ),
-                                       column(4,
-                                              shinyWidgets::sliderTextInput("radius", 
-                                                                            span("Smoothing radius", actionLink("i_radius", "[?]")),
-                                                                            choices=sort(unique(smoothed$radius)), selected = 2,
-                                                                            post = " km", grid = T),
-                                              sliderInput("pclim", 
-                                                          span("Soil versus Climate", actionLink("i_weight", "[?]")),
-                                                          min=0, max=100, value=50, step=10, post = "% clim",
-                                                          width="100%")
-                                       )
-                                       
-                                 ),
-                                 hr(),
-                                 fluidRow(
-                                       column(4, span(textOutput("target_label", inline = T), actionLink("i_arrows", "[?]"), style="color:red")),
-                                       column(4, textOutput("points_label")),
-                                       column(4, span(textOutput("color_label"), style="color:darkblue")),
-                                 ),
-                                 fluidRow(
-                                       plotOutput("scatter")
-                                 ),
-                                 fluidRow(
-                                       column(4,
-                                              selectizeInput("xvar", "X variable", all_vars$desc[!str_detect(all_vars$desc, "Seed zones|Change in")], all_vars$desc[1])
-                                       ),
-                                       column(4,
-                                              selectizeInput("yvar", "Y variable", all_vars$desc[!str_detect(all_vars$desc, "Seed zones|Change in")], all_vars$desc[2])
-                                       ),
-                                       column(4,
-                                              selectizeInput("color", "Color variable", 
-                                                             all_vars$desc[c(11, 12, 1:10, 13:17)], 
-                                                             all_vars$desc[11]),
-                                              uiOutput("nclust")
-                                       )
-                                 ),
-                                 hr(),
-                                 fluidRow( column(4, h5("Download map as raster ", actionLink("i_download", "[?]"))) ),
-                                 fluidRow( column(4, downloadButton("download", "")) )
-                                 
-                          ),
-                          column(8,
-                                 leafletOutput("map", height="90vh") #1000)
-                          )
-                 ),
-                 
-                 tabPanel("Instructions",
+
+
+# UI #################
+ui <- dashboardPage(
+      skin = "black",
+      
+      dashboardHeader(title = "Seeds of Change"),
+      
+      dashboardSidebar(
+            sidebarMenu(
+                  menuItem("Tool", tabName = "tool", icon = icon("map-location")),
+                  menuItem("Instructions", tabName = "instructions", icon = icon("circle-info")),
+                  menuItem("About", tabName = "about", icon = icon("circle-user"))
+            ),
+            br(),
+            br(),
+            p(style = "margin-left: 15px;margin-right: 15px;", 
+              "Seeds of Change is a decision support tool for ecological restoration. It identifies areas in California that may be suitable for seed collection or planting, by analyzing spatial data on climate change, soil characteristics, species distributions, and adaptive neighborhoods.")
+      ),
+      
+      dashboardBody(
+            
+            tags$head(
+                  tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
+            ),
+            
+            tabItems(
+                  tabItem(tabName = "tool",
                           fluidRow(
-                                column(12,
-                                       htmltools::includeMarkdown("assets/instructions.md")
-                                       # uiOutput('instructions')
+                                column(
+                                      width = 4,
+                                      box(
+                                            title = "Model settings", width = NULL, #collapsible = T, collapsed = T,
+                                            selectInput("mode", 
+                                                        span("Focal site activity ", actionLink("i_mode", "[?]")), 
+                                                        c("planting", "seed collection"), "planting"),
+                                            uiOutput("constraintControls"),
+                                            textInput("lonlat",
+                                                      span("Focal site location ", actionLink("i_location", "[?]")), 
+                                                      paste(s$lon, s$lat, sep = ", ")),
+                                            selectizeInput("sp", 
+                                                           span("Species ", actionLink("i_species", "[?]")), 
+                                                           choices = spps, selected = "Quercus agrifolia"),
+                                            selectInput("time",
+                                                        span("Time period ", actionLink("i_time", "[?]")),
+                                                        times, "2071-2100"),
+                                            selectInput("ssp",
+                                                        span("Scenario ", actionLink("i_ssp", "[?]")),
+                                                        ssps$text, "SSP5-8.5"),
+                                            shinyWidgets::sliderTextInput("threshold",
+                                                                          span("SDM threshold", actionLink("i_threshold", "[?]")),
+                                                                          choices = c(1, 2, 5, seq(10, 80, 10)),
+                                                                          selected = 50, post = "%", grid = T),
+                                            shinyWidgets::sliderTextInput("radius",
+                                                                          span("Smoothing radius", actionLink("i_radius", "[?]")),
+                                                                          choices=sort(unique(smoothed$radius)), selected = 2,
+                                                                          post = " km", grid = T),
+                                            sliderInput("pclim",
+                                                        span("Soil versus Climate", actionLink("i_weight", "[?]")),
+                                                        min=0, max=100, value=50, step=10, post = "% clim",
+                                                        width="100%"),
+                                            selectizeInput("color", "Display variable",
+                                                           all_vars$desc[c(11, 12, 1:10, 13:17)],
+                                                           all_vars$desc[11]),
+                                            uiOutput("nclust")
+                                      )
+                                      
+                                ),
+                                column(
+                                      width = 8,
+                                      tabBox(
+                                            title = "Results", width = NULL, side = "right", selected = "Map",
+                                            tabPanel("Export", 
+                                                     fluidRow(
+                                                           column(12, downloadButton("download", ""), h5("Download map as raster ", actionLink("i_download", "[?]")))
+                                                     )
+                                            ),
+                                            tabPanel("Plot", 
+                                                     fluidRow(
+                                                           column(8, 
+                                                                  span(textOutput("color_label1")),
+                                                                  plotOutput("legend2", height = "45px"),
+                                                                  plotOutput("scatter")),
+                                                           column(4, 
+                                                                  span(textOutput("target_label", inline = T), actionLink("i_arrows", "[?]"), style="color:red"),
+                                                                  br(), br(),
+                                                                  textOutput("points_label"),
+                                                                  br(), br(),
+                                                                  selectizeInput("xvar", "X variable", all_vars$desc[!str_detect(all_vars$desc, "Seed zones|Change in")], all_vars$desc[1]),
+                                                                  selectizeInput("yvar", "Y variable", all_vars$desc[!str_detect(all_vars$desc, "Seed zones|Change in")], all_vars$desc[2])
+                                                           )
+                                                     )
+                                            ),
+                                            tabPanel("Map", 
+                                                     span(textOutput("color_label2")),
+                                                     plotOutput("legend1", height = "45px"),
+                                                     leafletOutput("map", height = "calc(100vh - 210px)")
+                                            )
+                                      )
+                                      
                                 )
                           )
-                 ),
-                 
-                 tabPanel("About",
+                  ),
+                  tabItem(tabName = "instructions",
                           fluidRow(
-                                column(12,
-                                       tags$img(src="BIPPB_logo.jpg", width="300px", align="center"),
-                                       # tags$img(src="logo5.png", width="200px", align="center"),
-                                       br(),
-                                       br(),
-                                       br(),
-                                       htmltools::includeMarkdown("assets/about.md"),
-                                       hr(),
-                                       downloadButton("downloadSpp", "Download full CA species list")
+                                column(width = 12,
+                                       box(width = NULL,
+                                           htmltools::includeMarkdown("assets/instructions.md")
+                                       )
                                 )
                           )
-                 )
+                  ),
+                  tabItem(tabName = "about",
+                          fluidRow(
+                                column(width = 12,
+                                       box(width = NULL,
+                                           htmltools::includeMarkdown("assets/about.md")
+                                       )
+                                )
+                          )
+                  )
+            )
+      )
 )
 
 
 # server #################
-
 server <- function(input, output, session) {
       
       
@@ -243,9 +256,9 @@ server <- function(input, output, session) {
                          title="Species",
                          HTML("The tool comes pre-loaded with estimated geographic range maps for most California native plant species (only 25 species important for Bay Area restoration projects are included in this beta version, but all 5221 species listed below will ultimately be added).",
                               "Select a species to load its estimated California geographic range, which is modeled based on climate, distance to known observations, and landscape intactness.",
-                              "We'll use this distribution to estimate the species' environmental tolerance, model gene flow among nearby populations, and hypothesize which populations may be adapted to the environment of the selected focal site.",
+                              "This distribution is used to estimate the species' environmental tolerance, model gene flow among nearby populations, and hypothesize which populations may be adapted to the environment of the selected focal site.",
                               "Or for a generic species-agnostic analysis of environmental similarity between sites, select 'NONE' in the species box.<br><br>"),
-                         selectizeInput("allsp", "Full species list", choices = allspps), # not used server-side
+                         selectizeInput("allsp", "Full species list", choices = allspps), # not used server-side -- just informational
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       observeEvent(input$i_radius, 
                    {showModal(modalDialog(
@@ -281,7 +294,8 @@ server <- function(input, output, session) {
       observeEvent(input$i_constrain, 
                    {showModal(modalDialog(
                          title="Limit to species range",
-                         "Check this box to limit prospective planting sites to locations within the species' current modeled range.",
+                         "This option is available when focal site activity is set to 'seed collection.'",
+                         "Check this box to limit the map of prospective planting sites to locations within the species' current modeled range.",
                          "Uncheck it to consider all of California, which may be useful if the modeled range omits areas where the species occurs, or as a means to explore where locations outside the current range could become suitable in the future.", 
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       observeEvent(input$i_mode, 
@@ -289,22 +303,25 @@ server <- function(input, output, session) {
                          title = "Target site activity",
                          "Select whether the selected focal location is a 'planting' or 'seed collection' site.",
                          "If it's a planting site, its environment in the selected 'time period' will be compared to historic smoothed environments across the species range (prospective locations where seeds could be collected to plant in the focal site).", 
-                         "If it's a collection site, its historic smoothed environment will be compared to range-wide environments from the selected time period (prospective locations where seeds collcted in the focal site could be plantd).", 
+                         "If it's a collection site, its historic smoothed environment will be compared to range-wide environments from the selected time period (prospective locations where seeds collcted in the focal site could be planted).",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       observeEvent(input$i_download, 
                    {showModal(modalDialog(
                          title = "Download results",
-                         "Click the 'download' button to save a raster file of the current map.",
+                         "Click the download button to export a raster file of the current map.",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       observeEvent(input$i_location, 
                    {showModal(modalDialog(
                          title = "Select a focal location",
-                         "To choose a focal site, click the map or enter 'Lon, Lat' in the box and press ENTER.",
+                         "To choose a focal site, either click on the map, or enter your 'Lon, Lat' in the box and press RETURN on your keyboard.",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       observeEvent(input$i_nclust, 
                    {showModal(modalDialog(
                          title = "Seed zones",
                          "Use this slider to select the number of seed zones to produce. This performs a k-means cluster analysis, grouping sites across the species range into clusters with similar environments.",
+                         "Seed zones are independent of the selected focal site, but the 'focal site activity' setting determines which environmental data are used:",
+                         "if the activity is set to 'planting' is then clusters are based on smoothed historic data, while if it is set to 'seed collection' then clusters will be based on environmental data for the selected future scenario.",
+                         "The 'soil versus climate' setting affects the relative weight given to the two categories of variable.",
                          easyClose = TRUE, footer = modalButton("Dismiss") )) })
       observeEvent(input$i_arrows, 
                    {showModal(modalDialog(
@@ -325,6 +342,8 @@ server <- function(input, output, session) {
       
       
       # dynamic inputs ######################
+      
+      output$map_title <- renderText({ paste0(input$sp, ": ",  input$color) })
       
       site <- reactiveValues(point = s)
       
@@ -348,8 +367,11 @@ server <- function(input, output, session) {
       })
       
       # show range constraint input only in collection mode
+      # output$constraintControls <- renderUI({
+      #       if(input$mode == "seed collection") checkboxInput("constrain", span("Limit results to species range", actionLink("i_constrain", "[?]")), TRUE)
+      # })
       output$constraintControls <- renderUI({
-            if(input$mode == "seed collection") checkboxInput("constrain", span("Limit results to species range", actionLink("i_constrain", "[?]")), TRUE)
+            if(input$mode == "seed collection") selectInput("constrain", span("Limit results to species range", actionLink("i_constrain", "[?]")), c(TRUE, FALSE))
       })
       
       # show k input only when seed zone output is selected
@@ -384,20 +406,19 @@ server <- function(input, output, session) {
             threshold <- input$threshold / 100
             p <- rast(list.files(paste0(assets, "/ranges"), pattern = input$sp, full.names = T))
             p[p < threshold] <- NA
-            
             y <- smoothed %>% 
                   filter(gs==input$sp,
                          radius==input$radius) %>%
                   pull(path) %>%
                   terra::rast()
-            p <- crop(p, crop(y[[1]], p))
+            crop(p, crop(y[[1]], p))
       })
       
       clip <- function(x, y) x %>% crop(y) %>% mask(y) %>% trim()
       
       # historic
       smoothed_envt <- reactive({
-            req(input$sp)
+            req(input$sp, range_mask())
             y <- smoothed %>% 
                   filter(gs==input$sp,
                          radius==input$radius) %>%
@@ -433,7 +454,6 @@ server <- function(input, output, session) {
                   m4 <- stackBands(cf, 5) %>% rast() %>% setNames(vars)
                   m5 <- stackBands(cf, 6) %>% rast() %>% setNames(vars)
             }
-            
             list(clim = clim,
                  m1 = m1, m2 = m2, m3 = m3, m4 = m4, m5 = m5,
                  soil = soil_all)
@@ -449,7 +469,7 @@ server <- function(input, output, session) {
                                  grepl(tolower(ssp), files) &
                                  grepl(str_remove(var, "d"), files)]
             msk <- smoothed_envt()[[1]][[1]]
-            rast(files) %>% crop(msk) %>% mask(msk) %>% setNames(var) %>% clip(range_mask())
+            rast(files) %>% crop(msk) %>% mask(msk) %>% setNames(var) %>% clip(crop(range_mask(), .)) # clip(range_mask())
       })
       
       # reference climate across range (historic if planting mode)
@@ -460,9 +480,13 @@ server <- function(input, output, session) {
             if(input$mode == "seed collection"){
                   req(input$constrain)
                   if(!is.null(input$constrain)){
-                        if(input$constrain) y <- y %>%
-                                    map(crop, y = smoothed_envt()[[1]][[1]]) %>%
-                                    map(terra::mask, mask = smoothed_envt()[[1]][[1]])
+                        if(input$constrain){
+                              y <- y %>% map(clip, y = range_mask())
+                              # map(crop, y = smoothed_envt()[[1]][[1]]) %>%
+                              # map(terra::mask, mask = smoothed_envt()[[1]][[1]])
+                        }#else{
+                        #browser()
+                        #}
                   }
             }
             return(y)
@@ -478,7 +502,7 @@ server <- function(input, output, session) {
                        reference = switch(input$mode, "planting" = reference, "seed collection" = future))
             if(all(is.na(te$focal$clim))){
                   showModal(modalDialog(
-                        title="Oops", "It seems your selected location is outside the allowed area. Please choose a site in California, and if focal site is set to 'collection', please choose a site within the species range (colored areas on map).",
+                        title="Oops", "It seems your selected location is outside the allowed area. Please choose a site in California, and if focal site activity is set to 'seed collection', please choose a site within the species range (i.e. colored areas on the map).",
                         easyClose = TRUE, footer = modalButton("Dismiss") ))
                   updateSelectInput(session, "mode", selected = "planting")
             }
@@ -554,14 +578,8 @@ server <- function(input, output, session) {
                   message = "Stand by.", 
                   value = 0, 
                   {
-                        # incProgress(.25, detail = "Computing climate similarities.")
-                        # x <- clim_sigmas()
-                        # incProgress(.5, detail = "Computing soil similarities.")
-                        # x <- soil_sigmas()
                         incProgress(.25, detail = "Computing environmental similarities.")
                         req(sigmas())
-                        
-                        # incProgress(.75, detail = "Merging dimensions.")
                         
                         v <- all_vars[all_vars$desc == input$color, ]
                         f <- final()
@@ -570,54 +588,43 @@ server <- function(input, output, session) {
                         latlon <- coordinates(site$point)
                         req(final())
                         
-                        
-                        
-                        tag.map.title <- tags$style(HTML("
-  .leaflet-control.map-title { 
-    transform: translate(-50%,20%);
-    position: fixed !important;
-    left: 67%;
-    text-align: center;
-    padding-left: 10px; 
-    padding-right: 10px; 
-    background: rgba(255,255,255,0.75);
-    font-weight: bold;
-    font-size: 18px;
-  }
-"))
-                        title <- tags$div(tag.map.title, HTML(input$color))  
-                        
-                        
+                        #                         tag.map.title <- tags$style(HTML("
+                        #   .leaflet-control.map-title { 
+                        #     transform: translate(45px,-65px);
+                        #     top: 0px;
+                        #     left: 0px;
+                        #     text-align: left;
+                        #     padding-left: 10px; 
+                        #     padding-right: 10px; 
+                        #     background: rgba(255,255,255,0.75);
+                        #     font-weight: bold;
+                        #     font-size: 16px;
+                        #   }
+                        # "))
+                        #                         title <- tags$div(tag.map.title, HTML(paste0(input$color, ":<br><i>", input$sp, "</i>")))
                         
                         r <- f[[v$abbv]]
                         if(input$color == "Seed zones"){
-                              # browser()
                               pal <- colorFactor(cluster_pal(), domain = 1:k(), na.color = "transparent")
-                              # leafletProxy("map") %>% clearMarkers() %>% clearImages() %>%
-                              #       addRasterImage(f[[v$abbv]], colors = pal, opacity = 0.8, method = "ngb") %>%
-                              #       addAwesomeMarkers(lng = latlon[1], lat = latlon[2], icon = icon)
                         }else{
                               limits <- range(c(v$min, v$max, values(r)), na.rm = T)
                               if(str_detect(input$color, "Change in")) limits <- max(abs(values(r)), na.rm = T) * c(-1, 1)
                               pal <- colorNumeric(switch(v$palette, "sigma" = sigma_pal, "viridis" = viridis_pal, "delta" = delta_pal),
                                                   limits,
                                                   na.color = "transparent")
-                              # leafletProxy("map") %>% clearMarkers() %>% clearImages() %>%
-                              #       addRasterImage(r, colors = pal, opacity = 0.8) %>%
-                              #       addAwesomeMarkers(lng = latlon[1], lat = latlon[2], icon = icon)
                         }
                         leafletProxy("map") %>% clearMarkers() %>% clearImages() %>% clearControls() %>%
                               addRasterImage(r, colors = pal, opacity = 0.8,
                                              method = ifelse(v$abbv == "clust", "ngb", "bilinear")) %>%
-                              # addLegend(title = input$color, colors = "white", labels = "(legend at left)") %>%
-                              addControl(title, position = "topleft", className="map-title") %>%
+                              # addControl(title, position = "topleft", className="map-title") %>%
                               addAwesomeMarkers(lng = latlon[1], lat = latlon[2], icon = icon)
                         
                   })
       })
       
       # scatter plot ####################################
-      output$scatter <- renderPlot({
+      # output$scatter <- renderPlot
+      scat <- reactive({
             
             req(final())
             
@@ -632,14 +639,7 @@ server <- function(input, output, session) {
             vc <- all_vars$abbv[all_vars$desc == input$color]
             
             f <- final()
-            # if(vc == "clust"){
-            #       d <- c(final(), rgb_raster())[[c(vx, vy, c("r", "g", "b"))]] %>% as.data.frame() %>% na.omit()
-            #       d$rgb <- rgb(d$r, d$g, d$b, maxColorValue = 255)
-            #       d <- select(d, -r, -g, -b)
-            # }else{
-            # if(input$xvar == "Change in Climatic water deficit") browser()
             d <- f[[c(vx, vy, vc)]] %>% as.data.frame() %>% na.omit()
-            # }
             
             # compute range on full data set, and then subsample data
             minmax <- range(d[[vc]], na.rm = T)
@@ -647,7 +647,6 @@ server <- function(input, output, session) {
             names(d) <- c("xvar", "yvar", "cvar")
             d <- d %>% sample_n(min(maxpoints, nrow(.)))
             
-            # vc <- all_vars[all_vars$desc == input$color, ]
             fill_col <- NA
             
             x_label <- paste0(input$xvar, " ", all_vars$units[all_vars$desc == input$xvar])
@@ -663,19 +662,19 @@ server <- function(input, output, session) {
             scatter <- ggplot() +
                   geom_point(data = d, aes(xvar, yvar, color = cvar), size = .5) +
                   theme_minimal(base_size = 15) +
-                  theme(legend.position = "right") +
                   labs(x = x_label, y = y_label, color = NULL)
             
             if(vc == "clust"){
                   scatter <- scatter +
-                        guides(color = guide_legend(override.aes = list(size = 8, shape = 15))) +
+                        # guides(color = guide_legend(override.aes = list(size = 8, shape = 15))) +
                         scale_color_manual(values = cluster_pal())
             }else{
                   limits <- c(ifelse(is.na(vci$min), minmax[1], vci$min), 
                               ifelse(is.na(vci$max), minmax[2], vci$max))
                   if(str_detect(input$color, "Change in")) limits <- max(abs(minmax)) * c(-1, 1)
                   scatter <- scatter + 
-                        guides(color = guide_colorbar(barheight = unit(.8, "npc"))) +
+                        theme(legend.position = "none") +
+                        # guides(color = guide_colorbar(barheight = unit(.8, "npc"))) +
                         scale_color_gradientn(colours = switch(vci$palette, 
                                                                "sigma" = sigma_pal, "viridis" = viridis_pal, "delta" = delta_pal), 
                                               limits = limits)
@@ -714,19 +713,44 @@ server <- function(input, output, session) {
             return(scatter)
       })
       
+      output$scatter <- renderPlot({
+            scat()
+      })
+      
+      
+      output$color_label1 <- renderText({ paste(input$color,
+                                                all_vars$units[all_vars$desc == input$color]) })
+      output$color_label2 <- renderText({ paste(input$color,
+                                                all_vars$units[all_vars$desc == input$color]) })
+      
+      lgnd <- reactive({
+            p <- scat() +
+                  theme(legend.position = "top",
+                        legend.justification = "left")
+            if(input$color == "Seed zones"){
+                  p <- p + guides(color = guide_legend(override.aes = list(size = 8, shape = 15)))
+            }else{
+                  p <- p + guides(color = guide_colorbar(barwidth = unit(.5, "npc"), # unit(.8, "npc"),
+                                                         barheight = .75,
+                                                         title.position = "top"))
+            }
+            require(ggpubr)
+            leg <- get_legend(p)
+            as_ggplot(leg)
+      })
+      output$legend1 <- renderPlot({ lgnd() })
+      output$legend2 <- renderPlot({ lgnd() })
+      
       
       output$target_label <- renderText({ paste0("Target: ", input$mode, " site (",
                                                  ifelse(input$mode == "planting", 
                                                         paste0(input$time, ", ", input$ssp), 
                                                         paste0(times[1], ifelse(input$radius == 0, "", ", smoothed"))), 
-                                                 # ", +/-2 range SD",
                                                  ")") })
       output$points_label <- renderText({ paste0("Points: potential ", setdiff(c("planting", "seed collection"), input$mode), " sites (",
                                                  ifelse(input$mode == "planting", 
                                                         paste0(times[1], ifelse(input$radius == 0, "", ", smoothed")), 
                                                         paste0(input$time, ", ", input$ssp)), ")") })
-      output$color_label <- renderText({ paste("Color of map & points:", input$color,
-                                               all_vars$units[all_vars$desc == input$color]) })
       
       
       # downloads ########################

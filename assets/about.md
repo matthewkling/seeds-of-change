@@ -1,6 +1,9 @@
-
-Seeds of Change is a tool aimed a characterizing patterns of environmental variation across space and time within the ranges of California plant species, helping to identify potential matches between collection and planting sites for ecological restoration projects in California, incorporating data on species ranges, soil variation, and future climate change. The project originated as a collaboration between resource managers at the Golden Gate National Recreation Area and a group of researchers at UC Berkeley.
-
-This is a beta version of the application, and is still under active development. Documentation is incomplete, the tool has not been thoroughly tested, and bugs are possible. Please contact mattkling@berkeley.edu with questions or bug reports.
+Seeds of Change is a free, open-source tool designed to help support decisions about seed collection and planting for ecological restoration projects in California. It was developed by researchers at UC Berkeley, in collaboration with resource managers at the US National Park Service and the Golden Gate National Parks Conservancy, with funding from the Berkeley Institute for Parks, People, and Biodiversity.
 
 Links to technical documentation and publications will be added here as they become available.
+
+This tool is provided for informational purposes only, and may not be predictive of plant performance. Users assume all responsibility for any decisions made based on the data provided through this website.
+
+Please contact [mattkling\@berkeley.edu](mailto:mattkling@berkeley.edu){.email} with questions or bug reports. Bug reports can also be filed as issues at the project's [GitHub repository](https://github.com/matthewkling/seeds-of-change).
+
+![](images/BIPPB_logo.jpg)
