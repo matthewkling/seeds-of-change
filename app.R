@@ -146,7 +146,8 @@ ui <- dashboardPage(
       dashboardBody(
             
             tags$head(
-                  tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
+                  tags$link(rel = "stylesheet", type = "text/css", href = "custom.css"),
+                  includeHTML("google-analytics.html")
             ),
             
             tabItems(
