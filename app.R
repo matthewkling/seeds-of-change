@@ -140,7 +140,10 @@ ui <- dashboardPage(
             br(),
             br(),
             p(style = "margin-left: 15px;margin-right: 15px;", 
-              "Seeds of Change is a decision support tool for ecological restoration efforts in California. It matches potentially suitable seed collection and planting sites by analyzing spatial data on climate change, soil characteristics, species distributions, and adaptive neighborhoods.")
+              "Seeds of Change is a decision support tool for ecological restoration efforts in California. It matches potentially suitable seed collection and planting sites by analyzing spatial data on climate change, soil characteristics, species distributions, and adaptive neighborhoods.",
+              br(),
+              br(),
+              "University of California, Berkeley")
       ),
       
       dashboardBody(
@@ -591,6 +594,7 @@ server <- function(input, output, session) {
             req(d, vc)
             
             if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", sort(unique(d$cvar))))
+            # if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", LETTERS[as.integer(sort(unique(d$cvar)))]))
             
             vci <- all_vars[all_vars$desc == input$color, ]
             scatter <- ggplot() +
@@ -600,6 +604,7 @@ server <- function(input, output, session) {
             
             if(vc == "clust"){
                   scatter <- scatter +
+                        theme(legend.position = "none") +
                         scale_color_manual(values = cluster_pal())
             }else{
                   limits <- c(ifelse(is.na(vci$min), minmax[1], vci$min), 
@@ -662,6 +667,8 @@ server <- function(input, output, session) {
                                                          barheight = .75,
                                                          title.position = "top"))
             }
+            # browser()
+            # cowplot::get_plot_component(plot, "guide-box", return_all = TRUE)
             cowplot::get_legend(p)
       })
       output$legend1 <- renderPlot({ grid.draw(lgnd()) })
