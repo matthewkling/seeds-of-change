@@ -140,8 +140,8 @@ ui <- dashboardPage(
             br(),
             br(),
             p(style = "margin-left: 15px;margin-right: 15px;", 
-              "Seeds of Change is a decision support tool for ecological restoration efforts in California. It matches potentially suitable seed collection and planting sites by analyzing spatial data on climate change, soil characteristics, species distributions, and adaptive neighborhoods.",
-              br(),
+              "Seeds of Change is a decision support tool for ecological restoration efforts in California. It matches potentially suitable seed collection and planting sites by analyzing spatial data on climate change, soil characteristics, species distributions, and adaptive neighborhoods."),
+            p(style = "margin-left: 15px;margin-right: 15px;color: #b8c8ce", 
               br(),
               "University of California, Berkeley")
       ),
