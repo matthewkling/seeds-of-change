@@ -593,8 +593,8 @@ server <- function(input, output, session) {
             # plot
             req(d, vc)
             
-            if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", sort(unique(d$cvar))))
-            # if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", LETTERS[as.integer(sort(unique(d$cvar)))]))
+            # if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", sort(unique(d$cvar))))
+            if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", LETTERS[as.integer(sort(unique(d$cvar)))]))
             
             vci <- all_vars[all_vars$desc == input$color, ]
             scatter <- ggplot() +
