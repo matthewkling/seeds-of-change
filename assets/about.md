@@ -1,4 +1,4 @@
-Seeds of Change is a free, open-source tool designed to help support decisions about seed collection and planting for ecological restoration projects in California. It was developed by [Matthew Kling](http://matthewkling.net/) and collaborators at UC Berkeley, in consultation with resource managers at the US National Park Service and the Golden Gate National Parks Conservancy, funding from the UC Berkeley Institute for Parks, People, and Biodiversity, and web hosting by the [UC Berkeley Natural History Museums](https://bnhm.berkeley.edu).
+Seeds of Change is a free, open-source tool designed to help support decisions about seed collection and planting for ecological restoration projects in California. It was developed by [Matthew Kling](http://matthewkling.net/) and collaborators at UC Berkeley, in consultation with resource managers at the US National Park Service and the Golden Gate National Parks Conservancy, funding from the [UC Berkeley Institute for Parks, People, and Biodiversity](https://parks.berkeley.edu), and web hosting by the [UC Berkeley Natural History Museums](https://bnhm.berkeley.edu).
 
 Details on methods and data sources are available in the [technical documentation](seeds-of-change-technical-documentation.pdf).
 
@@ -8,4 +8,4 @@ This tool is provided for informational purposes only, and may not be predictive
 
 ---
 
-<img src="images/BIPPB_logo.jpg" alt="BIPPB logo" style="width:300px;"/>
+<img src="images/instituteforparks.jpg" alt="Institute for Parks" style="width:300px;"/>
