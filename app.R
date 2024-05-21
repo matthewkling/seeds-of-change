@@ -1,6 +1,7 @@
 
 library(shiny)
 library(shinydashboard)
+library(shinyWidgets)
 library(dplyr)
 library(readr)
 library(tidyr)
@@ -280,7 +281,7 @@ server <- function(input, output, session) {
             }
       }
       
-      modals <- read_csv("assets/modals.csv")
+      modals <- suppressWarnings(read_csv("assets/modals.csv", show_col_types = FALSE))
       
       # static elements
       pmap(modals[modals$id != "i_variable",], ibox)
@@ -457,7 +458,6 @@ server <- function(input, output, session) {
                         easyClose = TRUE, footer = modalButton("Dismiss") ))
                   updateSelectInput(session, "mode", selected = "planting")
             }
-            message("target_envt")
             return(te)
       })
       
@@ -473,7 +473,6 @@ server <- function(input, output, session) {
             x <- (x - range_stats()$mean) / range_stats()$sd
             site_mean <- (unlist(c(target_envt()$focal$clim, target_envt()$focal$soil)) - range_stats()$mean) / range_stats()$sd
             w <- rep(c(input$pclim / 100, 1-(input$pclim / 100)), each = nlyr(x)/2)
-            message("sigmas")
             sigma(x, site_mean, w)
       })
       
@@ -667,9 +666,8 @@ server <- function(input, output, session) {
                                                          barheight = .75,
                                                          title.position = "top"))
             }
-            # browser()
-            # cowplot::get_plot_component(plot, "guide-box", return_all = TRUE)
-            cowplot::get_legend(p)
+            l <- suppressWarnings(cowplot::get_legend(p))
+            return(l)
       })
       output$legend1 <- renderPlot({ grid.draw(lgnd()) })
       output$legend2 <- renderPlot({ grid.draw(lgnd()) })
