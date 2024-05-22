@@ -640,7 +640,7 @@ server <- function(input, output, session) {
                                  x=orig[,vx], y=orig[,vy], xend=dest[,vx], yend=dest[,vy],
                                  arrow=grid::arrow(type="closed", angle=15, length=unit(.1, "in"),
                                                    ends = ifelse(input$mode == "seed collection", "first", "last"))) +
-                        annotate("point", color="red", size = .5, x=orig[vx], y=orig[vy]) +
+                        annotate("point", color="red", size = .5, x=orig[,vx], y=orig[,vy]) +
                         annotate("segment", color="red", linewidth = .3,
                                  x=orig[,vx], y=orig[,vy], xend=dest[,vx], yend=dest[,vy],
                                  arrow=grid::arrow(type="open", angle=15, length=unit(.1, "in"),
