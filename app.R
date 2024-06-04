@@ -6,7 +6,7 @@ library(dplyr)
 library(readr)
 library(tidyr)
 library(ggplot2)
-library(cowplot)
+library(ggpubr)
 library(leaflet)
 library(raster)
 library(terra)
@@ -666,11 +666,11 @@ server <- function(input, output, session) {
                                                          barheight = .75,
                                                          title.position = "top"))
             }
-            l <- suppressWarnings(cowplot::get_legend(p))
+            l <- p %>% ggpubr::get_legend() %>% ggpubr::as_ggplot()
             return(l)
       })
-      output$legend1 <- renderPlot({ grid.draw(lgnd()) })
-      output$legend2 <- renderPlot({ grid.draw(lgnd()) })
+      output$legend1 <- renderPlot({ lgnd() })
+      output$legend2 <- renderPlot({ lgnd() })
       
       
       # text elements ############
