@@ -16,6 +16,9 @@ library(stringr)
 select <- dplyr::select
 extract <- terra::extract
 
+# for recaptcha:
+library(shinygCAPTCHAv3); library(shinyjs); library(httr); library(jsonlite)
+
 
 
 #### data loading ##############################
@@ -41,10 +44,6 @@ ssps <- data.frame(ssp = ssps,
 
 spps <- list.files(paste0(assets, "ranges")) %>% sub("\\.tif", "", .)
 allspps <- readRDS("assets/all_species.rds")
-
-# spps[spps == "NONE"] <- "All of California (no focal species)"
-# allspps[allspps == "NONE"] <- "All of California (no focal species)"
-
 
 soil_all <- rast("assets/soil_800m.tif")
 names(soil_all) <- paste0("soil_PC", 1:nlyr(soil_all))
@@ -100,8 +99,7 @@ s <- data.frame(species=NA, lat=38.02, lon=-122.83)
 coordinates(s) <- c("lon", "lat")
 crs(s) <- ll
 
-
-# define a keyPressed input that activates when RETURN is pressed
+# define keyPressed input that activates when RETURN is pressed
 js <- '
 $(document).on("keyup", function(e) {
   if(e.keyCode == 13){
@@ -109,6 +107,9 @@ $(document).on("keyup", function(e) {
   }
 });
 '
+
+# load secret key for reCAPTCHA
+key <- readRDS("assets/key.rds")
 
 
 stackBands <- function (paths, band){
@@ -154,6 +155,9 @@ ui <- dashboardPage(
                   includeHTML("google-analytics.html")
             ),
             
+            useShinyjs(),
+            GreCAPTCHAv3Ui(key$public, "homepage", "responseReceived"),
+            
             tabItems(
                   tabItem(tabName = "tool",
                           fluidRow(
@@ -192,7 +196,6 @@ ui <- dashboardPage(
                                                      selectInput("ssp",
                                                                  span("Scenario ", actionLink("i_ssp", "[?]")),
                                                                  ssps$text, "SSP5-8.5"),
-                                                     # uiOutput("constraintControls"),
                                                      selectizeInput("color", 
                                                                     span("Display variable ", actionLink("i_color", "[?]")),
                                                                     all_vars$desc[c(11, 12, 1:10, 13:18)],
@@ -267,6 +270,20 @@ ui <- dashboardPage(
 
 # server #################
 server <- function(input, output, session) {
+      
+      # captcha ###################
+      human <- reactive({
+            threshold <- 0.1
+            rc <- GreCAPTCHAv3Server(key$secret, input$responseReceived)
+            if(rc$success) if(rc$score < threshold){
+                  showModal(modalDialog(
+                        title = "Hello. Are you human?", 
+                        "This app uses Google reCAPTCHA authentification to block bots, and it seems to think you're a bot, so app functionality has been disabled.",
+                        "Hopefully no human will ever see this message, but if you are in fact a human, we're terribly sorry for the inconvenience. Please email mattkling@berkeley.edu and we'll get this fixed for you ASAP.",
+                        easyClose = TRUE, footer = modalButton("Dismiss")))
+            }
+            rc$success & (rc$score >= threshold)
+      })
       
       
       # informational popups #############################
@@ -352,9 +369,17 @@ server <- function(input, output, session) {
       
       # data processing ############################
       
+      # load rasters
+      rasters <- reactive({
+            list(clim = clim_files,
+                 smoothed = smoothed,
+                 range = list.files(paste0(assets, "/ranges"), pattern = input$sp, full.names = T),
+                 deltas = list.files("assets/deltas", full.names = T))
+      })
+      
       range_mask <- reactive({
             threshold <- input$threshold / 100
-            p <- rast(list.files(paste0(assets, "/ranges"), pattern = input$sp, full.names = T))
+            p <- rast(rasters()$range)
             p[p < threshold] <- NA
             y <- smoothed %>% 
                   filter(gs==input$sp,
@@ -366,10 +391,17 @@ server <- function(input, output, session) {
       
       clip <- function(x, y) x %>% crop(y) %>% mask(y) %>% trim()
       
+      ref_envt <- reactive({ 
+            cf <- rasters()$clim
+            list(clim = stackBands(cf$path[cf$year=="1981-2010"], 1) %>%
+                       rast() %>%
+                       setNames(vars))
+      })
+      
       # historic
       smoothed_envt <- reactive({
             req(input$sp, range_mask())
-            y <- smoothed %>% 
+            y <- rasters()$smoothed %>% 
                   filter(gs==input$sp,
                          radius==input$radius) %>%
                   pull(path) %>%
@@ -380,9 +412,6 @@ server <- function(input, output, session) {
                         soil = y[[1:5]]))
       })
       
-      ref_envt <- list(clim = stackBands(clim_files$path[clim_files$year=="1981-2010"], 1) %>%
-                             rast() %>%
-                             setNames(vars))
       
       # future 
       future_envt <- reactive({
@@ -391,7 +420,8 @@ server <- function(input, output, session) {
             if(time == times[1]) ssp <- ssps$ssp[1]
             if(time != times[1] & ssp == "historic") ssp <- tail(sel$ssp[sel$ssp != "historic"], 1)
             
-            cf <- clim_files$path[clim_files$year==time & clim_files$ssp==ssp]
+            cf <- rasters()$clim
+            cf <- cf$path[cf$year==time & cf$ssp==ssp]
             
             clim <- stackBands(cf, 1) %>% rast() %>% setNames(vars)
             
@@ -416,7 +446,7 @@ server <- function(input, output, session) {
             if(! str_detect(tolower(input$color), "change in")) return(NULL)
             
             msk <- smoothed_envt()[[1]][[1]]
-            files <- list.files("assets/deltas", full.names = T)
+            files <- rasters()$deltas
             
             if(var == "sigma"){ # compute local sigma from multivariate deltas:
                   files <- files[grepl(time, files) & 
@@ -449,7 +479,7 @@ server <- function(input, output, session) {
       target_envt <- reactive({
             future <- future_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
             historic <- smoothed_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
-            reference <- ref_envt %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
+            reference <- ref_envt() %>% map(extract, y = coordinates(site$point)) %>% map(as.vector)
             te <- list(focal = switch(input$mode, "planting" = future, "seed collection" = historic),
                        reference = switch(input$mode, "planting" = reference, "seed collection" = future))
             if(all(is.na(te$focal$clim))){
@@ -496,7 +526,6 @@ server <- function(input, output, session) {
       
       # overall dissimilarity combining soil and climate
       final <- reactive({
-            # if(input$mode == "seed collection") browser()
             req(sigmas(), range_envt(), clusters())
             prob <- classify(sigmas(), matrix(c(5, Inf, 5), nrow = 1))
             d <- c(range_envt()$clim, range_envt()$soil, prob)
@@ -531,6 +560,7 @@ server <- function(input, output, session) {
                   message = "Stand by.", 
                   value = 0, 
                   {
+                        req(human())
                         incProgress(.25, detail = "Computing environmental similarities.")
                         req(sigmas())
                         
@@ -562,6 +592,7 @@ server <- function(input, output, session) {
       # scatter plot ####################################
       
       scat <- reactive({
+            req(human())
             req(final())
             
             # future climate mean, and sd of either ensemble or niche
@@ -588,11 +619,8 @@ server <- function(input, output, session) {
             x_label <- paste0(input$xvar, " ", all_vars$units[all_vars$desc == input$xvar])
             y_label <- paste(input$yvar, all_vars$units[all_vars$desc == input$yvar])
             
-            # if(input$color == "Multivariate change in climate") browser()
-            # plot
             req(d, vc)
             
-            # if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", sort(unique(d$cvar))))
             if(vc == "clust") d$cvar <- factor(d$cvar, levels = sort(unique(d$cvar)), labels = paste("zone", LETTERS[as.integer(sort(unique(d$cvar)))]))
             
             vci <- all_vars[all_vars$desc == input$color, ]
