@@ -13,11 +13,10 @@ library(terra)
 library(grid)
 library(purrr)
 library(stringr)
+library(shinyCAPTCHA)
 select <- dplyr::select
 extract <- terra::extract
 
-# for recaptcha:
-library(shinygCAPTCHAv3); library(shinyjs); library(httr); library(jsonlite)
 
 
 
@@ -156,7 +155,7 @@ ui <- dashboardPage(
             ),
             
             useShinyjs(),
-            GreCAPTCHAv3Ui(key$public, "homepage", "responseReceived"),
+            # GreCAPTCHAv3Ui(key$public, "homepage", "responseReceived"),
             
             tabItems(
                   tabItem(tabName = "tool",
@@ -272,17 +271,42 @@ ui <- dashboardPage(
 server <- function(input, output, session) {
       
       # captcha ###################
+      
+      # modified shinyCAPTCHA::recaptchaUI without submit button
+      recaptchaUI2 <- function(id, sitekey = Sys.getenv("recaptcha_sitekey"), ...) {
+            ns <- NS(id)
+            tagList(tags$div(
+                  shiny::tags$script(
+                        src = "https://www.google.com/recaptcha/api.js",
+                        async = NA,
+                        defer = NA
+                  ),
+                  tags$script(
+                        paste0("shinyCaptcha = function(response) {
+          Shiny.onInputChange('", ns("recaptcha_response"),"', response);
+      }")),
+                  tags$form(
+                        class = "shinyCAPTCHA-form",
+                        action = "?",
+                        method = "POST",
+                        tags$div(class = "g-recaptcha", `data-sitekey` = sitekey, `data-callback` = I("shinyCaptcha")),
+                        tags$br()#,
+                        # tags$input(type = "submit", ...) # modification
+                  )
+            ))
+      }
+      
+      showModal(modalDialog(title = "Seeds of Change",
+                            recaptchaUI2("test", sitekey = key$public_v2),
+                            footer = NULL, easyClose = FALSE, size = "m"))
+      result <- callModule(recaptcha, "test", secret = key$secret_v2)
       human <- reactive({
-            threshold <- 0.1
-            rc <- GreCAPTCHAv3Server(key$secret, input$responseReceived)
-            if(rc$success) if(rc$score < threshold){
-                  showModal(modalDialog(
-                        title = "Hello. Are you human?", 
-                        "This app uses Google reCAPTCHA authentification to block bots, and it seems to think you're a bot, so app functionality has been disabled.",
-                        "Hopefully no human will ever see this message, but if you are in fact a human, we're terribly sorry for the inconvenience. Please email mattkling@berkeley.edu and we'll get this fixed for you ASAP.",
-                        easyClose = TRUE, footer = modalButton("Dismiss")))
+            if(result()$success){
+                  removeModal()
+                  return(TRUE)
+            }else{
+                  return(FALSE)
             }
-            rc$success & (rc$score >= threshold)
       })
       
       
