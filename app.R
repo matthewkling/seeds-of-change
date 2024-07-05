@@ -154,9 +154,6 @@ ui <- dashboardPage(
                   includeHTML("google-analytics.html")
             ),
             
-            useShinyjs(),
-            # GreCAPTCHAv3Ui(key$public, "homepage", "responseReceived"),
-            
             tabItems(
                   tabItem(tabName = "tool",
                           fluidRow(
